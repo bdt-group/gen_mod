@@ -1,0 +1,20 @@
+{application, gen_mod,
+ [{description, "Modules handler"},
+  {vsn, "0.1.0"},
+  {registered, []},
+  {mod, {gen_mod_app, []}},
+  {applications,
+   [kernel,
+    stdlib
+   ]},
+  {env,[]},
+  {modules, []},
+
+  {licenses, ["Apache 2.0"]},
+  {links, []}
+ ]}.
+
+%% Local Variables:
+%% mode: erlang
+%% End:
+%% vim: set filetype=erlang tabstop=8:
