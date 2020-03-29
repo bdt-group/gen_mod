@@ -156,7 +156,7 @@ reload(Mod, NewOpts, OldOpts, Order) ->
 
 -spec unload(module(), options()) -> ok.
 unload(Mod, Opts) ->
-    case is_exported(Mod, unload, 2) of
+    case is_exported(Mod, unload, 1) of
         false -> ok;
         true ->
             try Mod:unload(Opts) of
