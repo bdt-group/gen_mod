@@ -182,9 +182,10 @@ merge_opts({Mod, Opts}) ->
                    true -> Mod:required();
                    false -> []
                end,
+    Known = maps:keys(Defaults) ++ Required,
     lists:foreach(
       fun(Opt) ->
-              case maps:is_key(Opt, Defaults) of
+              case lists:member(Opt, Known) of
                   true -> ok;
                   false ->
                       erlang:error({unknown_module_option, Mod, Opt})
