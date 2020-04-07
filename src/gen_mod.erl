@@ -156,7 +156,7 @@ reload(Mod, NewOpts, OldOpts, Order) ->
 
 -spec unload(module(), options()) -> ok.
 unload(Mod, Opts) ->
-    case is_exported(Mod, unload, 2) of
+    case is_exported(Mod, unload, 1) of
         false -> ok;
         true ->
             try Mod:unload(Opts) of
@@ -182,9 +182,10 @@ merge_opts({Mod, Opts}) ->
                    true -> Mod:required();
                    false -> []
                end,
+    Known = maps:keys(Defaults) ++ Required,
     lists:foreach(
       fun(Opt) ->
-              case maps:is_key(Opt, Defaults) of
+              case lists:member(Opt, Known) of
                   true -> ok;
                   false ->
                       erlang:error({unknown_module_option, Mod, Opt})
