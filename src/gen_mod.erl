@@ -12,6 +12,9 @@
 -export([start_server/1, start_server/2, stop_server/1]).
 -export([start_statem/1, start_statem/2, stop_statem/1]).
 -export([is_loaded/1, get_opt/2, loaded/0]).
+-export_type([options/0]).
+
+-include_lib("kernel/include/logger.hrl").
 
 -type options() :: map().
 
@@ -23,8 +26,6 @@
 -callback depends(options()) -> [module()].
 
 -optional_callbacks([unload/1, reload/2, defaults/0, required/0, depends/1]).
-
--export_types([options/0]).
 
 %%%===================================================================
 %%% API
@@ -114,14 +115,14 @@ load(Mod, Opts, Order) ->
         {ok, Pid} when is_pid(Pid) -> ok;
         Error ->
             ets:delete(modules, Mod),
-            error_logger:error_msg(
+            ?LOG_ERROR(
               "Unexpected return value from ~s:load/1:~n"
               "** Options = ~p~n"
               "** Return value = ~p",
               [Mod, Opts, Error])
     catch E:R:St ->
             ets:delete(modules, Mod),
-            error_logger:error_msg(
+            ?LOG_ERROR(
               "Failed to load module ~p:~n"
               "** Options = ~p~n"
               "** ~s",
@@ -136,14 +137,14 @@ reload(Mod, NewOpts, OldOpts, Order) ->
             try Mod:reload(NewOpts, OldOpts) of
                 ok -> ok;
                 Error ->
-                    error_logger:error_msg(
+                    ?LOG_ERROR(
                       "Unexpected return value from ~s:reload/2:~n"
                       "** New options = ~p~n"
                       "** Old options = ~p~n"
                       "** Return value = ~p",
                       [Mod, NewOpts, OldOpts, Error])
             catch E:R:St ->
-                    error_logger:error_msg(
+                    ?LOG_ERROR(
                       "Failed to reload module ~p:~n"
                       "** New options = ~p~n"
                       "** Old options = ~p~n"
@@ -162,7 +163,7 @@ unload(Mod, Opts) ->
             try Mod:unload(Opts) of
                 _ -> ok
             catch E:R:St ->
-                    error_logger:error_msg(
+                    ?LOG_ERROR(
                       "Failed to unload module ~p:~n"
                       "** Options = ~p~n"
                       "** ~s",
@@ -206,45 +207,45 @@ sort_modules(ModOpts) ->
     G = digraph:new([acyclic]),
     lists:foreach(
       fun({Mod, Opts}) ->
-	      digraph:add_vertex(G, Mod, Opts),
-	      Deps = case is_exported(Mod, depends, 1) of
+              digraph:add_vertex(G, Mod, Opts),
+              Deps = case is_exported(Mod, depends, 1) of
                          true -> Mod:depends(Opts);
                          false -> []
                      end,
-	      lists:foreach(
-		fun(DepMod) ->
-			case lists:keyfind(DepMod, 1, ModOpts) of
-			    false ->
-				erlang:error({missing_module_dep, Mod, DepMod});
-			    {DepMod, DepOpts} ->
-				digraph:add_vertex(G, DepMod, DepOpts),
-				case digraph:add_edge(G, DepMod, Mod) of
-				    {error, {bad_edge, Path}} ->
-					warn_cyclic_dep(Path);
-				    _ ->
-					ok
-				end
-			end
-		end, Deps)
+              lists:foreach(
+                fun(DepMod) ->
+                        case lists:keyfind(DepMod, 1, ModOpts) of
+                            false ->
+                                erlang:error({missing_module_dep, Mod, DepMod});
+                            {DepMod, DepOpts} ->
+                                digraph:add_vertex(G, DepMod, DepOpts),
+                                case digraph:add_edge(G, DepMod, Mod) of
+                                    {error, {bad_edge, Path}} ->
+                                        warn_cyclic_dep(Path);
+                                    _ ->
+                                        ok
+                                end
+                        end
+                end, Deps)
       end, ModOpts),
     {Result, _} = lists:mapfoldl(
-		    fun(V, Order) ->
-			    {M, O} = digraph:vertex(G, V),
-			    {{M, O, Order}, Order+1}
-		    end, 1, digraph_utils:topsort(G)),
+                    fun(V, Order) ->
+                            {M, O} = digraph:vertex(G, V),
+                            {{M, O, Order}, Order+1}
+                    end, 1, digraph_utils:topsort(G)),
     digraph:delete(G),
     Result.
 
 -spec is_exported(module(), atom(), arity()) -> boolean().
 is_exported(Mod, Fun, Arity) ->
-    code:ensure_loaded(Mod),
+    _ = code:ensure_loaded(Mod),
     erlang:function_exported(Mod, Fun, Arity).
 
 %%%===================================================================
 %%% Start/stop handlers
 %%%===================================================================
 -spec start(gen_server | gen_statem, module(), atom()) ->
-          {ok, pid()} | {error, {already_started, pid()} | term()}.
+                   {ok, pid()} | {error, {already_started, pid()} | term()}.
 start(Behaviour, Mod, Proc) ->
     Spec = #{id => Proc,
              start => {Behaviour, start_link,
@@ -257,7 +258,7 @@ start(Behaviour, Mod, Proc) ->
 
 -spec stop(atom()) -> ok | {error, term()}.
 stop(Proc) ->
-    supervisor:terminate_child(gen_mod_sup, Proc),
+    _ = supervisor:terminate_child(gen_mod_sup, Proc),
     supervisor:delete_child(gen_mod_sup, Proc).
 
 %%%===================================================================
@@ -265,7 +266,7 @@ stop(Proc) ->
 %%%===================================================================
 -spec warn_cyclic_dep([atom(), ...]) -> ok.
 warn_cyclic_dep(Path) ->
-    error_logger:warning_msg(
+    ?LOG_WARNING(
       "Cyclic dependency detected between modules ~s. "
       "This is either a bug, or the modules are not "
       "supposed to work together in this configuration. "
@@ -286,5 +287,5 @@ format_exception(Level, Class, Reason, Stacktrace) ->
       Level, Class, Reason, Stacktrace,
       fun(_M, _F, _A) -> false end,
       fun(Term, I) ->
-	      io_lib:print(Term, I, 80, -1)
+              io_lib:print(Term, I, 80, -1)
       end).
