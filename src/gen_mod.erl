@@ -8,15 +8,20 @@
 -module(gen_mod).
 
 %% API
--export([load/1, unload/0]).
+-export([start/0, stop/0]).
+-export([load/1, load/2]).
+-export([unload/0, unload/1]).
 -export([start_server/1, start_server/2, stop_server/1]).
 -export([start_statem/1, start_statem/2, stop_statem/1]).
--export([is_loaded/1, get_opt/2, loaded/0]).
+-export([get_opt/2, get_opt/3]).
+-export([is_loaded/1, is_loaded/2]).
+-export([loaded/0, loaded/1]).
 -export_type([options/0]).
 
 -include_lib("kernel/include/logger.hrl").
 
 -type options() :: map().
+-type scope() :: term().
 
 -callback load(options()) -> ok | {ok, pid()}.
 -callback unload(options()) -> any().
@@ -56,72 +61,115 @@ stop_statem(Proc) ->
 
 -spec load([{module(), options()}]) -> ok.
 load(ModOpts) ->
+    load(ModOpts, undefined).
+
+-spec load([{module(), options()}], scope()) -> ok.
+load(ModOpts, Scope) ->
     ModOpts1 = lists:map(fun merge_opts/1, ModOpts),
     ModOpts2 = sort_modules(ModOpts1),
     lists:foreach(
       fun({Mod, Opts, Order}) ->
-              case ets:lookup(modules, Mod) of
-                  [{Mod, OldOpts, OldOrder}] ->
+              case ets:lookup(modules, {Mod, Scope}) of
+                  [{_, OldOpts, OldOrder}] ->
                       case OldOpts of
                           Opts when Order == OldOrder ->
                               ok;
                           Opts ->
-                              ets:insert(modules, {Mod, Opts, Order});
+                              ets:insert(modules, {{Mod, Scope}, Opts, Order});
                           _ ->
-                              reload(Mod, Opts, OldOpts, Order)
+                              reload(Mod, Scope, Opts, OldOpts, Order)
                       end;
                   [] ->
-                      load(Mod, Opts, Order)
+                      load(Mod, Scope, Opts, Order)
               end
       end, ModOpts2),
     lists:foreach(
       fun({Mod, Opts}) ->
               case lists:keymember(Mod, 1, ModOpts2) of
                   true -> ok;
-                  false -> unload(Mod, Opts)
+                  false -> unload(Mod, Scope, Opts)
               end
-      end, lists:reverse(loaded())).
+      end, lists:reverse(loaded(Scope))).
 
 -spec unload() -> ok.
 unload() ->
+    unload(undefined).
+
+-spec unload(scope()) -> ok.
+unload(Scope) ->
     lists:foreach(
       fun({Mod, Opts}) ->
-              unload(Mod, Opts)
-      end, lists:reverse(loaded())).
+              unload(Mod, Scope, Opts)
+      end, lists:reverse(loaded(Scope))).
 
 -spec is_loaded(module()) -> boolean().
 is_loaded(Mod) ->
-    ets:member(modules, Mod).
+    is_loaded(Mod, undefined).
+
+-spec is_loaded(module(), scope()) -> boolean().
+is_loaded(Mod, Scope) ->
+    ets:member(modules, {Mod, Scope}).
 
 -spec get_opt(atom(), options() | module()) -> term().
 get_opt(Opt, Opts) when is_map(Opts) ->
     maps:get(Opt, Opts);
 get_opt(Opt, Mod) ->
-    Opts = ets:lookup_element(modules, Mod, 2),
+    get_opt(Opt, Mod, undefined).
+
+-spec get_opt(atom(), module(), scope()) -> term().
+get_opt(Opt, Mod, Scope) ->
+    Opts = ets:lookup_element(modules, {Mod, Scope}, 2),
     maps:get(Opt, Opts).
 
--spec loaded() -> [{module(), options()}].
+-spec loaded() -> [{scope(), [{module(), options()}, ...]}].
 loaded() ->
-    [{Mod, Opts} || {Mod, Opts, _Order} <- lists:keysort(3, ets:tab2list(modules))].
+    maps:to_list(
+      lists:foldr(
+        fun({{Mod, Scope}, Opts, _Order}, Acc) ->
+                maps:update_with(
+                  Scope,
+                  fun(ModOpts) -> [{Mod, Opts}|ModOpts] end,
+                  [{Mod, Opts}], Acc)
+        end, #{}, lists:keysort(3, ets:tab2list(modules)))).
+
+-spec loaded(scope()) -> [{module(), options()}].
+loaded(Scope) ->
+    [{Mod, Opts} || {{Mod, S}, Opts, _Order} <- lists:keysort(3, ets:tab2list(modules)),
+                    S == Scope].
+
+-spec start() -> ok | {error, term()}.
+start() ->
+    case application:ensure_all_started(?MODULE) of
+        {ok, _} -> ok;
+        {error, _} = Err -> Err
+    end.
+
+-spec stop() -> ok | {error, term()}.
+stop() ->
+    case application:stop(?MODULE) of
+        ok -> ok;
+        {error, {not_started, _}} -> ok;
+        Err -> Err
+    end.
 
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
--spec load(module(), options(), pos_integer()) -> ok.
-load(Mod, Opts, Order) ->
-    ets:insert(modules, {Mod, Opts, Order}),
+-spec load(module(), scope(), options(), pos_integer()) -> ok.
+load(Mod, Scope, Opts, Order) ->
+    ets:insert(modules, {{Mod, Scope}, Opts, Order}),
     try Mod:load(Opts) of
         ok -> ok;
         {ok, Pid} when is_pid(Pid) -> ok;
         Error ->
-            ets:delete(modules, Mod),
+            ets:delete(modules, {Mod, Scope}),
             ?LOG_ERROR(
               "Unexpected return value from ~s:load/1:~n"
               "** Options = ~p~n"
               "** Return value = ~p",
               [Mod, Opts, Error])
     catch E:R:St ->
-            ets:delete(modules, Mod),
+            ets:delete(modules, {Mod, Scope}),
             ?LOG_ERROR(
               "Failed to load module ~p:~n"
               "** Options = ~p~n"
@@ -129,8 +177,8 @@ load(Mod, Opts, Order) ->
               [Mod, Opts, format_exception(2, E, R, St)])
     end.
 
--spec reload(module(), options(), options(), pos_integer()) -> ok.
-reload(Mod, NewOpts, OldOpts, Order) ->
+-spec reload(module(), scope(), options(), options(), pos_integer()) -> ok.
+reload(Mod, Scope, NewOpts, OldOpts, Order) ->
     case is_exported(Mod, reload, 2) of
         false -> ok;
         true ->
@@ -152,11 +200,11 @@ reload(Mod, NewOpts, OldOpts, Order) ->
                       [Mod, NewOpts, OldOpts, format_exception(2, E, R, St)])
             end
     end,
-    ets:insert(modules, {Mod, NewOpts, Order}),
+    ets:insert(modules, {{Mod, Scope}, NewOpts, Order}),
     ok.
 
--spec unload(module(), options()) -> ok.
-unload(Mod, Opts) ->
+-spec unload(module(), scope(), options()) -> ok.
+unload(Mod, Scope, Opts) ->
     case is_exported(Mod, unload, 1) of
         false -> ok;
         true ->
@@ -170,28 +218,19 @@ unload(Mod, Opts) ->
                       [Mod, Opts, format_exception(2, E, R, St)])
             end
     end,
-    ets:delete(modules, Mod),
+    ets:delete(modules, {Mod, Scope}),
     ok.
 
 -spec merge_opts({module(), options()}) -> {module(), options()}.
 merge_opts({Mod, Opts}) ->
     Defaults = case is_exported(Mod, defaults, 0) of
                    true -> Mod:defaults();
-                   false -> #{}
+                   false -> undefined
                end,
     Required = case is_exported(Mod, required, 0) of
                    true -> Mod:required();
                    false -> []
                end,
-    Known = maps:keys(Defaults) ++ Required,
-    lists:foreach(
-      fun(Opt) ->
-              case lists:member(Opt, Known) of
-                  true -> ok;
-                  false ->
-                      erlang:error({unknown_module_option, Mod, Opt})
-              end
-      end, maps:keys(Opts)),
     lists:foreach(
       fun(Opt) ->
               case maps:is_key(Opt, Opts) of
@@ -200,7 +239,21 @@ merge_opts({Mod, Opts}) ->
                       erlang:error({missing_required_module_option, Mod, Opt})
               end
       end, Required),
-    {Mod, maps:merge(Defaults, Opts)}.
+    case Defaults of
+        undefined ->
+            {Mod, Opts};
+        _ ->
+            Known = maps:keys(Defaults) ++ Required,
+            lists:foreach(
+              fun(Opt) ->
+                      case lists:member(Opt, Known) of
+                          true -> ok;
+                          false ->
+                              erlang:error({unknown_module_option, Mod, Opt})
+                      end
+              end, maps:keys(Opts)),
+            {Mod, maps:merge(Defaults, Opts)}
+    end.
 
 -spec sort_modules([{module(), options()}]) -> [{module(), options(), pos_integer()}].
 sort_modules(ModOpts) ->
