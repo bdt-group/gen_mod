@@ -2,7 +2,7 @@ REBAR ?= rebar3
 PROJECT := gen_mod
 BUILD_IMAGE  ?= gitlab.bdt.tools:5000/build-ubuntu1804:1.4.2
 
-.PHONY: compile clean distclean xref dialyzer dialyze linter lint
+.PHONY: compile clean distclean xref dialyzer dialyze linter lint test
 
 all: compile
 
@@ -14,6 +14,10 @@ clean:
 
 distclean: clean
 	rm -rf _build
+
+test:
+	@$(REBAR) eunit --cover
+	@$(REBAR) cover --verbose
 
 xref:
 	@$(REBAR) xref
