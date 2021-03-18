@@ -23,8 +23,9 @@
 %%%===================================================================
 %%% API
 %%%===================================================================
-load(_) ->
-    gen_mod:start_statem(?MODULE).
+load(Opts) ->
+    {ok, Pid} = gen_mod:start_statem(?MODULE),
+    {ok, Pid, Opts}.
 
 unload(_) ->
     gen_mod:stop_statem(?MODULE).
@@ -42,7 +43,6 @@ callback_mode() -> state_functions.
 
 init([]) ->
     process_flag(trap_exit, true),
-    _ = gen_mod:get_opt(a, ?MODULE),
     {ok, state_name, #data{}}.
 
 state_name({call,Caller}, _Msg, Data) ->

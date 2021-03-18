@@ -1,0 +1,14 @@
+.rebar3
+_build
+.eunit
+
+*.beam
+*.plt
+erl_crash.dump
+.rebar
+.idea
+*.iml
+.DS_Store
+.edts
+rebar3.crashdump
+*~

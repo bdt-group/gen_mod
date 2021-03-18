@@ -12,7 +12,7 @@
 -behaviour(gen_mod).
 
 %% API
--export([start_link/0, load/1, unload/1, defaults/0]).
+-export([start_link/0, load/1, unload/1, required/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -23,14 +23,15 @@
 %%%===================================================================
 %%% API
 %%%===================================================================
-load(_) ->
-    gen_mod:start_server(?MODULE).
+load(Opts) ->
+    {ok, Pid} = gen_mod:start_server(?MODULE),
+    {ok, Pid, Opts}.
 
 unload(_) ->
     gen_mod:stop_server(?MODULE).
 
-defaults() ->
-    #{a => 1}.
+required() ->
+    [a].
 
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
@@ -40,7 +41,6 @@ start_link() ->
 %%%===================================================================
 init([]) ->
     process_flag(trap_exit, true),
-    _ = gen_mod:get_opt(a, ?MODULE),
     {ok, #state{}}.
 
 handle_call(_Request, _From, State) ->

@@ -19,23 +19,165 @@ double_start_test() ->
 load_unload_test() ->
     ?assertEqual(ok, gen_mod:load([{mod_test, #{}}])),
     ?assertEqual(true, gen_mod:is_loaded(mod_test)),
+    ?assertEqual([{mod_test, #{}}], gen_mod:loaded(undefined)),
     ?assertEqual(ok, gen_mod:unload()),
-    ?assertEqual(false, gen_mod:is_loaded(mod_test)).
+    ?assertEqual(false, gen_mod:is_loaded(mod_test)),
+    ?assertEqual([], gen_mod:loaded(undefined)),
+
+    ?assertEqual(ok, gen_mod:load([{mod_test, #{load => ok_opts}}])),
+    ?assertEqual(true, gen_mod:is_loaded(mod_test)),
+    ?assertEqual([{mod_test, #{load => ok_opts}}], gen_mod:loaded(undefined)),
+    ?assertEqual(ok, gen_mod:unload()),
+    ?assertEqual(false, gen_mod:is_loaded(mod_test)),
+    ?assertEqual([], gen_mod:loaded(undefined)),
+
+    ?assertEqual(ok, gen_mod:load([{mod_test, #{load => ok_modify_opts}}])),
+    ?assertEqual(true, gen_mod:is_loaded(mod_test)),
+    ?assertEqual([{mod_test, #{load => ok_modify_opts, load_modified => true}}],
+                 gen_mod:loaded(undefined)),
+    ?assertEqual(ok, gen_mod:unload()),
+    ?assertEqual(false, gen_mod:is_loaded(mod_test)),
+    ?assertEqual([], gen_mod:loaded(undefined)),
+
+    ?assertEqual({error, {failed_modules, [mod_test]}},
+                 gen_mod:load([{mod_test, #{load => error}}, {mod_test1, #{b => 2}}])),
+    ?assertEqual([false, true], [gen_mod:is_loaded(M) || M <- [mod_test, mod_test1]]),
+    ?assertEqual([{mod_test1, #{a => 1, b => 2}}], gen_mod:loaded(undefined)),
+    ?assertEqual(ok, gen_mod:unload()),
+    ?assertEqual([false, false], [gen_mod:is_loaded(M) || M <- [mod_test, mod_test1]]),
+    ?assertEqual([], gen_mod:loaded(undefined)),
+
+    ?assertEqual({error, {failed_modules, [mod_test]}},
+                 gen_mod:load([{mod_test, #{load => exception}}, {mod_test1, #{b => 2}}])),
+    ?assertEqual([false, true], [gen_mod:is_loaded(M) || M <- [mod_test, mod_test1]]),
+    ?assertEqual([{mod_test1, #{a => 1, b => 2}}], gen_mod:loaded(undefined)),
+    ?assertEqual(ok, gen_mod:unload()),
+    ?assertEqual([false, false], [gen_mod:is_loaded(M) || M <- [mod_test, mod_test1]]),
+    ?assertEqual([], gen_mod:loaded(undefined)),
+
+    ?assertEqual(ok, gen_mod:load([{mod_test, #{}}, {mod_test1, #{a => 3, b => 2}}])),
+    ?assertEqual([true, true], [gen_mod:is_loaded(M) || M <- [mod_test, mod_test1]]),
+    ?assertEqual([{mod_test1, #{a => 3, b => 2}}, {mod_test, #{}}], gen_mod:loaded(undefined)),
+     ?assertEqual(ok, gen_mod:unload()),
+    ?assertEqual([false, false], [gen_mod:is_loaded(M) || M <- [mod_test, mod_test1]]),
+    ?assertEqual([], gen_mod:loaded(undefined)),
+
+    ?assertEqual(ok, gen_mod:load([{mod_test1, #{b => 2}}])),
+    ?assertEqual(true, gen_mod:is_loaded(mod_test1)),
+    ?assertEqual([{mod_test1, #{a => 1, b => 2}}], gen_mod:loaded(undefined)),
+    ?assertEqual(ok, gen_mod:unload()),
+    ?assertEqual(false, gen_mod:is_loaded(mod_test1)),
+    ?assertEqual([], gen_mod:loaded(undefined)),
+
+    ?assertEqual(
+       {error, {missing_required_module_option, mod_test1, b}},
+       gen_mod:load([{mod_test1, #{}}, {mod_test, #{}}])),
+    ?assertEqual([false, false], [gen_mod:is_loaded(M) || M <- [mod_test, mod_test1]]),
+    ?assertEqual([], gen_mod:loaded(undefined)),
+
+    ?assertEqual(
+       {error, {unknown_module_option, mod_test1, c}},
+       gen_mod:load([{mod_test1, #{b => 2, c => 3}}])),
+    ?assertEqual(false, gen_mod:is_loaded(mod_test1)),
+    ?assertEqual([], gen_mod:loaded(undefined)),
+
+    ?assertEqual(ok, gen_mod:load([{mod_server, #{a => 1}}])),
+    ?assertEqual(true, gen_mod:is_loaded(mod_server)),
+    ?assertEqual([{mod_server, #{a => 1}}], gen_mod:loaded(undefined)),
+    ?assertEqual(ok, gen_mod:unload()),
+    ?assertEqual(false, gen_mod:is_loaded(mod_server)),
+    ?assertEqual([], gen_mod:loaded(undefined)),
+
+    ?assertEqual(ok, gen_mod:load([{mod_server, #{a => 1, b => 2}}])),
+    ?assertEqual(true, gen_mod:is_loaded(mod_server)),
+    ?assertEqual([{mod_server, #{a => 1, b => 2}}], gen_mod:loaded(undefined)),
+    ?assertEqual(ok, gen_mod:unload()),
+    ?assertEqual(false, gen_mod:is_loaded(mod_server)),
+    ?assertEqual([], gen_mod:loaded(undefined)),
+
+    ?assertEqual(
+       {error, {missing_required_module_option, mod_server, a}},
+       gen_mod:load([{mod_server, #{b => 2}}])),
+    ?assertEqual(false, gen_mod:is_loaded(mod_server)),
+    ?assertEqual([], gen_mod:loaded(undefined)),
+
+    ?assertEqual(ok, gen_mod:load([{mod_statem, #{a => 2}}])),
+    ?assertEqual(true, gen_mod:is_loaded(mod_statem)),
+    ?assertEqual([{mod_statem, #{a => 2}}], gen_mod:loaded(undefined)),
+    ?assertEqual(ok, gen_mod:unload()),
+    ?assertEqual(false, gen_mod:is_loaded(mod_statem)),
+    ?assertEqual([], gen_mod:loaded(undefined)),
+
+    ?assertEqual(ok, gen_mod:load([{mod_statem, #{}}])),
+    ?assertEqual(true, gen_mod:is_loaded(mod_statem)),
+    ?assertEqual([{mod_statem, #{a => 1}}], gen_mod:loaded(undefined)),
+    ?assertEqual(ok, gen_mod:unload()),
+    ?assertEqual(false, gen_mod:is_loaded(mod_statem)),
+    ?assertEqual([], gen_mod:loaded(undefined)),
+
+    ?assertEqual(
+       {error, {unknown_module_option, mod_statem, b}},
+       gen_mod:load([{mod_statem, #{b => 2}}])),
+    ?assertEqual(false, gen_mod:is_loaded(mod_statem)),
+    ?assertEqual([], gen_mod:loaded(undefined)),
+
+    ?assertEqual(ok, gen_mod:load([{mod_test, #{}}, {mod_test_dep, #{}}])),
+    ?assertEqual([true, true], [gen_mod:is_loaded(M) || M <- [mod_test, mod_test_dep]]),
+    ?assertEqual([{mod_test, #{}}, {mod_test_dep, #{}}], gen_mod:loaded(undefined)),
+    ?assertEqual(ok, gen_mod:unload()),
+    ?assertEqual([false, false], [gen_mod:is_loaded(M) || M <- [mod_test, mod_test_dep]]),
+    ?assertEqual([], gen_mod:loaded(undefined)),
+
+    ?assertEqual(
+       {error, {unknown_module_option, mod_test_dep, a}},
+       gen_mod:load([{mod_test, #{}}, {mod_test_dep, #{a => 1}}])),
+    ?assertEqual([false, false], [gen_mod:is_loaded(M) || M <- [mod_test, mod_test_dep]]),
+    ?assertEqual([], gen_mod:loaded(undefined)).
 
 loaded_dep_test() ->
     ?assertEqual(ok, gen_mod:load([{mod_test_dep, #{}}, {mod_test, #{}}])),
-    ?assertEqual([{undefined, [{mod_test, #{}}, {mod_test_dep, #{}}]}], gen_mod:loaded()),
-    ?assertEqual(ok, gen_mod:unload()).
+    ?assertEqual([true, true], [gen_mod:is_loaded(M) || M <- [mod_test, mod_test_dep]]),
+    ?assertEqual(ok, gen_mod:unload()),
+    ?assertEqual([false, false], [gen_mod:is_loaded(M) || M <- [mod_test, mod_test_dep]]),
+
+    ?assertEqual(
+       {error, {missing_module_dep, mod_test_dep, mod_test}},
+       gen_mod:load([{mod_test_dep, #{}}])),
+    ?assertEqual(false, gen_mod:is_loaded(mod_test_dep)).
 
 reload_test() ->
-    ?assertEqual(ok, gen_mod:load([{mod_test, #{}}], a)),
-    ?assertEqual(ok, gen_mod:load([{mod_test, #{}}], b)),
-    ?assertEqual(ok, gen_mod:load([{mod_test, #{a => 1}}], a)),
-    ?assertEqual(ok, gen_mod:load([{mod_test, #{b => 2}}], b)),
-    ?assertEqual([{mod_test, #{a => 1}}], gen_mod:loaded(a)),
-    ?assertEqual([{mod_test, #{b => 2}}], gen_mod:loaded(b)),
-    ?assertEqual(ok, gen_mod:unload(a)),
-    ?assertEqual(ok, gen_mod:unload(b)).
+    ?assertEqual(ok, gen_mod:load([{mod_test, #{}}, {mod_test1, #{b => 2}}], s1)),
+    ?assertEqual(ok, gen_mod:load([{mod_test, #{}}], s2)),
+    ?assertEqual([
+                  {mod_test1, #{a => 1, b => 2}},
+                  {mod_test, #{}}],
+                 gen_mod:loaded(s1)),
+    ?assertEqual([{mod_test, #{}}], gen_mod:loaded(s2)),
+
+    ?assertEqual(ok, gen_mod:load([{mod_test, #{reload => ok_opts}}], s1)),
+    ?assertEqual(ok, gen_mod:load([{mod_test, #{b => 2}}], s2)),
+    ?assertEqual([{mod_test, #{reload => ok_opts}}], gen_mod:loaded(s1)),
+    ?assertEqual([{mod_test, #{b => 2}}], gen_mod:loaded(s2)),
+
+    ?assertEqual(ok, gen_mod:load([{mod_test, #{reload => ok_modify_opts}}], s1)),
+    ?assertEqual([{mod_test, #{reload => ok_modify_opts, reload_modified => true}}],
+                 gen_mod:loaded(s1)),
+
+    ?assertEqual({error, {failed_modules, [mod_test]}},
+                  gen_mod:load([{mod_test, #{reload => error}}], s1)),
+    ?assertEqual([
+                  {mod_test, #{reload => ok_modify_opts, reload_modified => true}}],
+                 gen_mod:loaded(s1)),
+
+    ?assertEqual({error, {failed_modules, [mod_test]}},
+                  gen_mod:load([{mod_test, #{reload => exception}}], s1)),
+    ?assertEqual([
+                  {mod_test, #{reload => ok_modify_opts, reload_modified => true}}],
+                 gen_mod:loaded(s1)),
+
+    ?assertEqual(ok, gen_mod:unload(s1)),
+    ?assertEqual(ok, gen_mod:unload(s2)),
+    ?assertEqual([], gen_mod:loaded()).
 
 unload_test() ->
     ?assertEqual(ok, gen_mod:load([{mod_test, #{}}, {mod_test_dep, #{}}])),
@@ -60,7 +202,7 @@ get_opt_test() ->
     ?assertEqual(ok, gen_mod:unload()).
 
 server_test() ->
-    ?assertEqual(ok, gen_mod:load([{mod_server, #{}}])),
+    ?assertEqual(ok, gen_mod:load([{mod_server, #{a => 1}}])),
     ?assertEqual(true, gen_mod:is_loaded(mod_server)),
     ?assertEqual(ok, gen_mod:unload()),
     ?assertEqual(false, gen_mod:is_loaded(mod_server)).
