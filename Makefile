@@ -1,6 +1,5 @@
 REBAR ?= rebar3
 PROJECT := gen_mod
-BUILD_IMAGE  ?= gitlab.bdt.tools:5000/build-ubuntu1804:1.4.2
 
 .PHONY: compile clean distclean xref dialyzer dialyze linter lint test
 
@@ -33,8 +32,3 @@ linter:
 
 lint:
 	@$(REBAR) as lint lint
-
-.PHONY: d_%
-
-d_%:
-	./build-with-env --image $(BUILD_IMAGE) make $*
